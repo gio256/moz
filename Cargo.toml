@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 rustix = { version = "1.0", features = ["mm", "param"] }
+thiserror = "2"
