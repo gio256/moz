@@ -24,14 +24,6 @@ pub struct Mmap {
     pagesize: usize,
 }
 
-impl Mmap {
-    fn new() -> Self {
-        Self {
-            pagesize: rustix::param::page_size(),
-        }
-    }
-}
-
 #[derive(Debug, Error)]
 enum MmapErr {
     #[error("mmap failed with {0}")]
@@ -51,27 +43,21 @@ fn mmap(len: usize) -> Result<NonNull<u8>, Errno> {
     Ok(NonNull::new(ptr.cast()).unwrap())
 }
 
-fn round_to_align(ptr: NonNull<u8>, layout: Layout) -> (NonNull<u8>, usize) {
-    fn round(addr: usize, layout: Layout) -> usize {
-        // SAFETY: alignment is guaranteed to be a power of two and therefore > 0.
-        let align_minus_one = unsafe { usize::unchecked_sub(layout.align(), 1) };
-        addr.wrapping_add(align_minus_one) & usize::wrapping_sub(0, layout.align())
+impl Mmap {
+    fn new() -> Self {
+        Self {
+            pagesize: rustix::param::page_size(),
+        }
     }
 
-    let align_ost = ptr.align_offset(layout.align());
-    //assert!(align_ost.checked_add(layout.size()).unwrap() <= )
+    fn pagesize(&self) -> usize {
+        self.pagesize
+    }
 
-    let addr = ptr.addr().get();
-    let aligned_addr = round(addr, layout);
-    let align_ost = aligned_addr.wrapping_sub(addr);
-    let aligned = ptr.with_addr(NonZero::new(aligned_addr).unwrap());
-    (aligned, align_ost)
-}
-
-impl Mmap {
     // SAFETY: `ptr` must be aligned to `self.pagesize`.
     unsafe fn munmap(&self, ptr: NonNull<u8>, len: usize) -> Result<(), Errno> {
         assert!(ptr.is_aligned_to(self.pagesize));
+        assert!(len % self.pagesize == 0);
         //assert!(round_up(len, self.pagesize) == len);
         unsafe { rustix::mm::munmap(ptr.as_ptr().cast(), len) }
     }
@@ -133,11 +119,14 @@ impl Mmap {
         assert!(self.pagesize <= layout.align());
         let ptr = mmap(layout.size())?;
         if ptr.is_aligned_to(layout.align()) {
-            return Ok(Mem { ptr, layout });
+            Ok(Mem { ptr, layout })
+        } else {
+            unsafe { self.munmap(ptr, layout.size()) }?;
+            self.alloc_slow(layout)
         }
-        unsafe { self.munmap(ptr, layout.size()) }?;
+    }
 
-        // `alloc_size = layout.size() + layout.align() - pagesize`
+    fn alloc_slow(&self, layout: Layout) -> Result<Mem, MmapErr> {
         // Any pointer returned by `mmap` is guaranteed to be page-aligned, so
         // we should be at most `align - pagesize` bytes away from an address
         // aligned to `align`. Reserving `align - pagesize` extra bytes ensures
