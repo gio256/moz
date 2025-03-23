@@ -14,6 +14,7 @@ pub(crate) struct Tag {
 impl Tag {
     /// # SAFETY
     ///
+    /// TODO@safety
     /// `ptr` must be aligned to `layout.align()` and valid for `layout.size()`.
     pub(crate) unsafe fn new(ptr: NonNull<u8>, layout: Layout) -> Self {
         Self { ptr, layout }
