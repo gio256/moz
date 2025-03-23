@@ -1,8 +1,7 @@
 #![allow(unused)]
 
 use core::{
-    alloc::{AllocError, Layout, LayoutError},
-    num::NonZero,
+    alloc::{Layout, LayoutError},
     ptr::{self, NonNull},
 };
 
@@ -12,10 +11,7 @@ use rustix::{
 };
 use thiserror::Error;
 
-struct Mem {
-    ptr: NonNull<u8>,
-    layout: Layout,
-}
+use crate::core::Tag;
 
 pub struct Mmap {
     pagesize: usize,
@@ -113,18 +109,18 @@ impl Mmap {
     }
 
     // https://github.com/jemalloc/jemalloc/blob/22440a0207cd7d7c624c78723ca1eeb8a4353e79/src/pages.c#L312-L336
-    fn alloc(&self, layout: Layout) -> Result<Mem, MmapErr> {
+    fn alloc(&self, layout: Layout) -> Result<Tag, MmapErr> {
         let layout = layout.align_to(self.pagesize)?.pad_to_align();
         let ptr = map(layout.size())?;
         if ptr.is_aligned_to(layout.align()) {
-            Ok(Mem { ptr, layout })
+            Ok(unsafe { Tag::new(ptr, layout) })
         } else {
             unsafe { self.unmap(ptr, layout.size()) }?;
             self.alloc_slow(layout)
         }
     }
 
-    fn alloc_slow(&self, layout: Layout) -> Result<Mem, MmapErr> {
+    fn alloc_slow(&self, layout: Layout) -> Result<Tag, MmapErr> {
         // Any pointer returned by `mmap` is guaranteed to be page-aligned, so
         // we should be at most `align - pagesize` bytes away from an address
         // aligned to `align`. Reserving `align - pagesize` extra bytes ensures
@@ -136,10 +132,10 @@ impl Mmap {
         // SAFETY: `alloc` points to the beginning of the freshly mmap'd region
         // of `alloc_size` bytes.
         let ptr = unsafe { self.trim(alloc, alloc_size, layout) }?;
-        Ok(Mem { ptr, layout })
+        Ok(unsafe { Tag::new(ptr, layout) })
     }
 
-    unsafe fn free(&self, m: Mem) -> Result<(), MmapErr> {
-        unsafe { self.unmap(m.ptr, m.layout.size()) }.map_err(Into::into)
+    unsafe fn free(&self, tag: Tag) -> Result<(), MmapErr> {
+        unsafe { self.unmap(tag.ptr(), tag.layout().size()) }.map_err(Into::into)
     }
 }
