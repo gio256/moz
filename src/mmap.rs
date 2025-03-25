@@ -49,7 +49,10 @@ impl Mmap {
         self.pagesize
     }
 
-    // SAFETY: `ptr` must be aligned to `self.pagesize`.
+    /// # SAFETY
+    ///
+    /// TODO@safety
+    /// `ptr` must be aligned to `self.pagesize` and valid for `len`.
     unsafe fn unmap(&self, ptr: NonNull<u8>, len: usize) -> Result<(), Errno> {
         assert!(ptr.is_aligned_to(self.pagesize));
         assert!(len % self.pagesize == 0);
