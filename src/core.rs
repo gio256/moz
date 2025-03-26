@@ -43,3 +43,21 @@ pub(crate) trait FreeAll {
 pub(crate) trait Grind {
     fn grind(&self);
 }
+
+pub struct ZeroHeap<T>(T);
+
+impl<T: Alloc> Alloc for ZeroHeap<T> {
+    fn alloc(&self, layout: Layout) -> Result<Tag, AllocError> {
+        if layout.size() == 0 {
+            Ok(unsafe { Tag::new(layout.dangling(), layout) })
+        } else {
+            self.0.alloc(layout)
+        }
+    }
+
+    unsafe fn free(&self, tag: Tag) {
+        if layout.size() != 0 {
+            unsafe { self.0.free(tag) }
+        }
+    }
+}
